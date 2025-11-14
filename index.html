@@ -197,391 +197,412 @@
     </div>
 
     <script>
-        // --- VARIABLES GLOBALES ET CONSTANTES ---
-        const boardElement = document.getElementById('board');
-        const statusElement = document.getElementById('game-status');
-        const resetButton = document.getElementById('reset-btn');
-        const backToMenuButton = document.getElementById('back-to-menu-btn');
-        const startScreen = document.getElementById('start-screen');
-        const gameScreen = document.getElementById('game-screen');
-        const iaLevelSelection = document.getElementById('ia-level-selection');
-        const levelButtonsContainer = document.getElementById('level-buttons-container');
-        const levelDisplay = document.getElementById('level-display');
-        const modeDisplay = document.getElementById('mode-display');
-        const currentLevelDisplay = document.getElementById('current-level-display');
-        const victoryCounterDisplay = document.getElementById('victory-counter');
+        // --- VARIABLES GLOBALES ET CONSTANTES (mêmes qu'avant) ---
+const boardElement = document.getElementById('board');
+const statusElement = document.getElementById('game-status');
+const resetButton = document.getElementById('reset-btn');
+const backToMenuButton = document.getElementById('back-to-menu-btn');
+const startScreen = document.getElementById('start-screen');
+const gameScreen = document.getElementById('game-screen');
+const iaLevelSelection = document.getElementById('ia-level-selection');
+const levelButtonsContainer = document.getElementById('level-buttons-container');
+const levelDisplay = document.getElementById('level-display');
+const modeDisplay = document.getElementById('mode-display');
+const currentLevelDisplay = document.getElementById('current-level-display');
+const victoryCounterDisplay = document.getElementById('victory-counter');
 
-        let board = [];
-        let currentPlayer = 1; // 1 pour Noir (Joueur), 2 pour Blanc (Adversaire/IA)
-        let selectedPiece = null;
-        let gameActive = false;
+let board = [];
+let currentPlayer = 1; 
+let selectedPiece = null;
+let gameActive = false;
 
-        // Variables pour les niveaux et la progression
-        let gameMode = 'local';
-        // Note: L'IA actuelle est niveau FACILE. Les autres niveaux nécessitent Minimax.
-        const LEVELS = ['Facile', 'Normal', 'Difficile', 'Extrême', 'Assistant Maître', 'Maître', 'Divinité'];
-        let currentLevelIndex = 0; // Niveau actuel débloqué
-        let selectedLevelIndex = 0; // Niveau sélectionné pour la partie
-        let victories = 0; // Victoires du joueur au niveau actuel (non persistant)
+// Variables pour les niveaux et la progression
+let gameMode = 'local';
+const LEVELS = ['Facile', 'Normal', 'Difficile', 'Extrême', 'Assistant Maître', 'Maître', 'Divinité'];
+let currentLevelIndex = 0; 
+let selectedLevelIndex = 0;
+let victories = 0; 
 
-        // --- FONCTIONS DE GESTION DE L'INTERFACE ET DES NIVEAUX ---
+// ----------------------------------------------------------------
+// --- NOUVELLES FONCTIONS DE SAUVEGARDE ET CHARGEMENT (LOCALSTORAGE) ---
+// ----------------------------------------------------------------
 
-        function generateLevelButtons() {
-            levelButtonsContainer.innerHTML = '';
-            
-            LEVELS.forEach((level, index) => {
-                const button = document.createElement('button');
-                button.className = 'level-button';
-                button.textContent = level;
-                button.dataset.levelIndex = index;
+function saveProgress() {
+    try {
+        // Sauvegarder la progression dans le localStorage
+        localStorage.setItem('dames_level', currentLevelIndex);
+        localStorage.setItem('dames_victories', victories);
+        console.log("Progression sauvegardée !");
+    } catch (e) {
+        console.error("Erreur lors de la sauvegarde de la progression:", e);
+    }
+}
+
+function loadProgress() {
+    try {
+        // Charger la progression depuis le localStorage
+        const savedLevel = localStorage.getItem('dames_level');
+        const savedVictories = localStorage.getItem('dames_victories');
+
+        if (savedLevel !== null) {
+            currentLevelIndex = parseInt(savedLevel, 10);
+            selectedLevelIndex = currentLevelIndex; // Sélectionne le niveau le plus élevé débloqué
+        }
+        if (savedVictories !== null) {
+            victories = parseInt(savedVictories, 10);
+        }
+        
+        console.log(`Progression chargée: Niveau ${LEVELS[currentLevelIndex]}, Victoires ${victories}`);
+    } catch (e) {
+        console.error("Erreur lors du chargement de la progression:", e);
+    }
+}
+
+
+// --- FONCTIONS DE GESTION DE L'INTERFACE ET DES NIVEAUX ---
+
+function generateLevelButtons() {
+    levelButtonsContainer.innerHTML = '';
+    
+    LEVELS.forEach((level, index) => {
+        const button = document.createElement('button');
+        button.className = 'level-button';
+        button.textContent = level;
+        button.dataset.levelIndex = index;
+        
+        if (index > currentLevelIndex) {
+            button.disabled = true;
+            button.textContent += " (Bloqué)";
+        } else {
+            button.addEventListener('click', () => {
+                selectedLevelIndex = index;
+                // Mettre à jour la sélection visuelle
+                levelButtonsContainer.querySelectorAll('.level-button').forEach(btn => {
+                    btn.classList.remove('selected');
+                });
+                button.classList.add('selected');
                 
-                // Gérer le verrouillage et la sélection
-                if (index > currentLevelIndex) {
-                    button.disabled = true;
-                    button.textContent += " (Bloqué)";
+                // Réafficher la progression pour le niveau sélectionné si c'est le niveau actif
+                if (index === currentLevelIndex) {
+                    updateProgressionDisplay();
                 } else {
-                    button.addEventListener('click', () => {
-                        selectedLevelIndex = index;
-                        // Mettre à jour la sélection visuelle
-                        levelButtonsContainer.querySelectorAll('.level-button').forEach(btn => {
-                            btn.classList.remove('selected');
-                        });
-                        button.classList.add('selected');
-                        
-                        // Réafficher la progression pour le niveau sélectionné si c'est le niveau actif
-                        if (index === currentLevelIndex) {
-                            updateProgressionDisplay();
-                        } else {
-                            // Si on sélectionne un niveau inférieur (pour rejouer)
-                            currentLevelDisplay.textContent = level;
-                            victoryCounterDisplay.textContent = `N/A`;
-                        }
-                    });
+                    currentLevelDisplay.textContent = level;
+                    victoryCounterDisplay.textContent = `N/A`; // Pas de suivi de victoire pour les niveaux inférieurs
                 }
-                
-                if (index === selectedLevelIndex) {
-                    button.classList.add('selected');
-                }
-                
-                levelButtonsContainer.appendChild(button);
             });
         }
-
-        function selectMode(mode) {
-            gameMode = mode;
-            
-            if (mode === 'ia') {
-                document.getElementById('mode-selection').style.display = 'none';
-                iaLevelSelection.style.display = 'block';
-                updateProgressionDisplay();
-            } else {
-                startGame();
-            }
-        }
-
-        function updateProgressionDisplay() {
-            currentLevelDisplay.textContent = LEVELS[currentLevelIndex];
-            victoryCounterDisplay.textContent = `${victories} / 5`;
-            generateLevelButtons();
-        }
-
-        function startGame() {
-            startScreen.style.display = 'none';
-            gameScreen.style.display = 'flex';
-            
-            levelDisplay.textContent = LEVELS[selectedLevelIndex];
-            modeDisplay.textContent = gameMode === 'ia' ? 'Joueur vs IA' : 'Joueur vs Joueur (Local)';
-            
-            resetGame();
-        }
-
-        function backToMenu() {
-            gameScreen.style.display = 'none';
-            startScreen.style.display = 'block';
-            document.getElementById('mode-selection').style.display = 'block';
-            iaLevelSelection.style.display = 'none';
-            selectedPiece = null;
-            gameActive = false;
-            updateProgressionDisplay();
-        }
-
-        // --- LOGIQUE DE L'IA (NIVEAU BASIQUE/FACILE) ---
         
-        function AITurn() {
-            if (currentPlayer !== 2 || gameMode !== 'ia' || !gameActive) return;
-
-            // Logique de l'IA (Très basique - Niveau Facile)
-            const allMoves = getAllPossibleMoves(2);
-            
-            if (allMoves.length === 0) {
-                checkWinCondition();
-                return; 
-            }
-
-            let move = null;
-            
-            // Priorité 1 : Mouvement de capture
-            move = allMoves.find(m => m.capture);
-
-            // Priorité 2 : Mouvement simple aléatoire
-            if (!move) {
-                const simpleMoves = allMoves.filter(m => !m.capture);
-                if (simpleMoves.length > 0) {
-                    move = simpleMoves[Math.floor(Math.random() * simpleMoves.length)];
-                } else {
-                    // Si seules des captures étaient possibles, mais l'IA ne les a pas trouvées (ne devrait pas arriver avec ce code)
-                    move = allMoves[0]; 
-                }
-            }
-            
-            if (move) {
-                selectedPiece = { r: move.fromR, c: move.fromC }; 
-                makeMove(move.r, move.c);
-            }
+        if (index === selectedLevelIndex) {
+            button.classList.add('selected');
         }
+        
+        levelButtonsContainer.appendChild(button);
+    });
+}
 
-        function getAllPossibleMoves(player) {
-            const allMoves = [];
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    const piece = board[r][c];
-                    if (piece && piece.player === player) {
-                        const moves = getPossibleMoves(r, c);
-                        moves.forEach(m => allMoves.push({ 
-                            fromR: r, fromC: c, 
-                            r: m.r, c: m.c, 
-                            capture: m.capture 
-                        }));
-                    }
-                }
-            }
-            return allMoves;
+function selectMode(mode) {
+    gameMode = mode;
+    
+    if (mode === 'ia') {
+        document.getElementById('mode-selection').style.display = 'none';
+        iaLevelSelection.style.display = 'block';
+        updateProgressionDisplay();
+    } else {
+        startGame();
+    }
+}
+
+function updateProgressionDisplay() {
+    currentLevelDisplay.textContent = LEVELS[currentLevelIndex];
+    victoryCounterDisplay.textContent = `${victories} / 5`;
+    generateLevelButtons();
+}
+
+function startGame() {
+    startScreen.style.display = 'none';
+    gameScreen.style.display = 'flex';
+    
+    levelDisplay.textContent = LEVELS[selectedLevelIndex];
+    modeDisplay.textContent = gameMode === 'ia' ? 'Joueur vs IA' : 'Joueur vs Joueur (Local)';
+    
+    resetGame();
+}
+
+function backToMenu() {
+    gameScreen.style.display = 'none';
+    startScreen.style.display = 'block';
+    document.getElementById('mode-selection').style.display = 'block';
+    iaLevelSelection.style.display = 'none';
+    selectedPiece = null;
+    gameActive = false;
+    updateProgressionDisplay();
+}
+
+
+// --- LOGIQUE DE L'IA (NIVEAU BASIQUE/FACILE) ---
+// (Le code AITurn, getAllPossibleMoves reste inchangé)
+function AITurn() {
+    if (currentPlayer !== 2 || gameMode !== 'ia' || !gameActive) return;
+    const allMoves = getAllPossibleMoves(2); 
+    
+    if (allMoves.length === 0) {
+        checkWinCondition();
+        return; 
+    }
+
+    let move = null;
+    move = allMoves.find(m => m.capture);
+
+    if (!move) {
+        const simpleMoves = allMoves.filter(m => !m.capture);
+        if (simpleMoves.length > 0) {
+            move = simpleMoves[Math.floor(Math.random() * simpleMoves.length)];
+        } else {
+            move = allMoves[0]; 
         }
+    }
+    
+    if (move) {
+        selectedPiece = { r: move.fromR, c: move.fromC }; 
+        makeMove(move.r, move.c);
+    }
+}
 
-
-        // --- LOGIQUE DU JEU DE DAMES (Cœur) ---
-
-        function initializeBoard() {
-            board = Array(8).fill(null).map(() => Array(8).fill(0));
-
-            // Pièces du Joueur 1 (Noir, en haut)
-            for (let r = 0; r < 3; r++) {
-                for (let c = 0; c < 8; c++) {
-                    if ((r + c) % 2 !== 0) {
-                        board[r][c] = { player: 1, isKing: false };
-                    }
-                }
-            }
-
-            // Pièces du Joueur 2 (Blanc, en bas)
-            for (let r = 5; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    if ((r + c) % 2 !== 0) {
-                        board[r][c] = { player: 2, isKing: false };
-                    }
-                }
-            }
-        }
-
-        function renderBoard() {
-            boardElement.innerHTML = '';
-            const possibleMoves = selectedPiece ? getPossibleMoves(selectedPiece.r, selectedPiece.c) : [];
-
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
-                    const square = document.createElement('div');
-                    square.classList.add('square');
-                    square.dataset.row = r;
-                    square.dataset.col = c;
-                    
-                    if ((r + c) % 2 === 0) {
-                        square.classList.add('light');
-                    } else {
-                        square.classList.add('dark');
-                    }
-
-                    const piece = board[r][c];
-
-                    // Ajout de la pièce
-                    if (piece) {
-                        const pieceElement = document.createElement('div');
-                        pieceElement.classList.add('piece', `p${piece.player}`);
-                        if (piece.isKing) {
-                            pieceElement.classList.add('king');
-                        }
-                        square.appendChild(pieceElement);
-                        
-                        // Ajouter le listener de sélection (seulement si le jeu est actif et c'est le tour du joueur humain)
-                        if (piece.player === currentPlayer && gameActive && currentPlayer === 1) {
-                            pieceElement.addEventListener('click', () => selectPiece(r, c));
-                        }
-                    }
-
-                    // Marquer les mouvements possibles
-                    const isPossible = possibleMoves.some(move => move.r === r && move.c === c);
-                    if (isPossible) {
-                        square.classList.add('possible-move');
-                        square.addEventListener('click', () => makeMove(r, c));
-                    }
-                    
-                    // Marquer la pièce sélectionnée
-                    if (selectedPiece && selectedPiece.r === r && selectedPiece.c === c) {
-                        square.classList.add('selected');
-                    }
-
-                    boardElement.appendChild(square);
-                }
-            }
-            updateStatus();
-        }
-
-        function selectPiece(r, c) {
-            if (!gameActive || currentPlayer !== 1) return; // Seul le joueur 1 peut sélectionner
-
-            if (selectedPiece && selectedPiece.r === r && selectedPiece.c === c) {
-                selectedPiece = null;
-            } else {
-                selectedPiece = { r, c };
-            }
-            renderBoard();
-        }
-
-        function getPossibleMoves(r, c) {
-            const moves = [];
+function getAllPossibleMoves(player) {
+    const allMoves = [];
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
             const piece = board[r][c];
-            if (!piece) return moves;
+            if (piece && piece.player === player) {
+                const moves = getPossibleMoves(r, c);
+                moves.forEach(m => allMoves.push({ 
+                    fromR: r, fromC: c, 
+                    r: m.r, c: m.c, 
+                    capture: m.capture 
+                }));
+            }
+        }
+    }
+    return allMoves;
+}
 
-            const direction = (piece.player === 1) ? 1 : -1; // P1 monte (r+1), P2 descend (r-1)
-            const directions = piece.isKing ? [-1, 1] : [direction];
 
-            for (const dir of directions) {
-                // Mouvements simples et Prises
-                for (const dc of [-1, 1]) {
-                    const nr = r + dir;
-                    const nc = c + dc;
-                    
-                    // Mouvement simple
-                    if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) {
-                        moves.push({ r: nr, c: nc, capture: null });
-                    }
-                    
-                    // Mouvement de prise
-                    const nnr = r + dir * 2;
-                    const nnc = c + dc * 2;
-                    
-                    if (
-                        nnr >= 0 && nnr < 8 && nnc >= 0 && nnc < 8 && 
-                        board[nr][nc] && board[nr][nc].player !== currentPlayer && 
-                        !board[nnr][nnc]
-                    ) {
-                        moves.push({ r: nnr, c: nnc, capture: { r: nr, c: nc } });
-                    }
+// --- LOGIQUE DU JEU DE DAMES (Cœur) ---
+// (Les fonctions initializeBoard, renderBoard, selectPiece, getPossibleMoves, makeMove sont inchangées, 
+// sauf pour la fonction makeMove qui appelle checkWinCondition)
+function initializeBoard() {
+    board = Array(8).fill(null).map(() => Array(8).fill(0));
+    for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 8; c++) {
+            if ((r + c) % 2 !== 0) {
+                board[r][c] = { player: 1, isKing: false };
+            }
+        }
+    }
+    for (let r = 5; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            if ((r + c) % 2 !== 0) {
+                board[r][c] = { player: 2, isKing: false };
+            }
+        }
+    }
+}
+
+function renderBoard() {
+    boardElement.innerHTML = '';
+    const possibleMoves = selectedPiece ? getPossibleMoves(selectedPiece.r, selectedPiece.c) : [];
+
+    for (let r = 0; r < 8; r++) {
+        for (let c = 0; c < 8; c++) {
+            const square = document.createElement('div');
+            square.classList.add('square');
+            square.dataset.row = r;
+            square.dataset.col = c;
+            
+            if ((r + c) % 2 === 0) {
+                square.classList.add('light');
+            } else {
+                square.classList.add('dark');
+            }
+
+            const piece = board[r][c];
+
+            if (piece) {
+                const pieceElement = document.createElement('div');
+                pieceElement.classList.add('piece', `p${piece.player}`);
+                if (piece.isKing) {
+                    pieceElement.classList.add('king');
+                }
+                square.appendChild(pieceElement);
+                
+                if (piece.player === currentPlayer && gameActive && currentPlayer === 1) {
+                    pieceElement.addEventListener('click', () => selectPiece(r, c));
                 }
             }
 
-            return moves;
-        }
-        
-        function makeMove(toR, toC) {
-            if (!selectedPiece) return;
-
-            const fromR = selectedPiece.r;
-            const fromC = selectedPiece.c;
-            const piece = board[fromR][fromC];
-            
-            const possibleMoves = getPossibleMoves(fromR, fromC);
-            const move = possibleMoves.find(m => m.r === toR && m.c === toC);
-            
-            if (move) {
-                // Déplacer et capturer
-                board[toR][toC] = piece;
-                board[fromR][fromC] = 0;
-                
-                if (move.capture) {
-                    board[move.capture.r][move.capture.c] = 0;
-                }
-                
-                // Promotion en Dame
-                if (!piece.isKing) {
-                    if (piece.player === 1 && toR === 7) {
-                        board[toR][toC].isKing = true;
-                    } else if (piece.player === 2 && toR === 0) {
-                        board[toR][toC].isKing = true;
-                    }
-                }
-
-                // Changer de joueur
-                currentPlayer = currentPlayer === 1 ? 2 : 1;
-                selectedPiece = null;
-                renderBoard();
-                
-                // Vérifier la victoire et lancer l'IA
-                if (!checkWinCondition()) {
-                    if (currentPlayer === 2 && gameMode === 'ia') {
-                        setTimeout(AITurn, 500); // Délai pour l'IA
-                    }
-                }
-            }
-        }
-        
-        function updateStatus() {
-            const playerColor = currentPlayer === 1 ? "Noir (P1)" : "Blanc (P2)";
-            statusElement.textContent = gameActive ? `Au tour du Joueur ${playerColor}` : 'Partie terminée.';
-        }
-        
-        function checkWinCondition() {
-            const p1Pieces = board.flat().filter(p => p && p.player === 1).length;
-            const p2Pieces = board.flat().filter(p => p && p.player === 2).length;
-
-            let winner = null;
-
-            if (p1Pieces === 0) {
-                winner = 2; // IA/Adversaire gagne
-            } else if (p2Pieces === 0) {
-                winner = 1; // Joueur gagne
+            const isPossible = possibleMoves.some(move => move.r === r && move.c === c);
+            if (isPossible) {
+                square.classList.add('possible-move');
+                square.addEventListener('click', () => makeMove(r, c));
             }
             
-            if (winner) {
-                gameActive = false;
-                statusElement.textContent = `FIN DU JEU : Le Joueur ${winner === 1 ? 'Noir (P1)' : 'Blanc (P2)'} a gagné !`;
+            if (selectedPiece && selectedPiece.r === r && selectedPiece.c === c) {
+                square.classList.add('selected');
+            }
+
+            boardElement.appendChild(square);
+        }
+    }
+    updateStatus();
+}
+
+function selectPiece(r, c) {
+    if (!gameActive || currentPlayer !== 1) return;
+    if (selectedPiece && selectedPiece.r === r && selectedPiece.c === c) {
+        selectedPiece = null;
+    } else {
+        selectedPiece = { r, c };
+    }
+    renderBoard();
+}
+
+function getPossibleMoves(r, c) {
+    const moves = [];
+    const piece = board[r][c];
+    if (!piece) return moves;
+
+    const direction = (piece.player === 1) ? 1 : -1;
+    const directions = piece.isKing ? [-1, 1] : [direction];
+
+    for (const dir of directions) {
+        for (const dc of [-1, 1]) {
+            const nr = r + dir;
+            const nc = c + dc;
+            
+            // Mouvement simple
+            if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && !board[nr][nc]) {
+                moves.push({ r: nr, c: nc, capture: null });
+            }
+            
+            // Mouvement de prise
+            const nnr = r + dir * 2;
+            const nnc = c + dc * 2;
+            
+            if (
+                nnr >= 0 && nnr < 8 && nnc >= 0 && nnc < 8 && 
+                board[nr][nc] && board[nr][nc].player !== currentPlayer && 
+                !board[nnr][nnc]
+            ) {
+                moves.push({ r: nnr, c: nnc, capture: { r: nr, c: nc } });
+            }
+        }
+    }
+    return moves;
+}
+
+function makeMove(toR, toC) {
+    if (!selectedPiece) return;
+
+    const fromR = selectedPiece.r;
+    const fromC = selectedPiece.c;
+    const piece = board[fromR][fromC];
+    
+    const possibleMoves = getPossibleMoves(fromR, fromC);
+    const move = possibleMoves.find(m => m.r === toR && m.c === toC);
+    
+    if (move) {
+        board[toR][toC] = piece;
+        board[fromR][fromC] = 0;
+        
+        if (move.capture) {
+            board[move.capture.r][move.capture.c] = 0;
+        }
+        
+        if (!piece.isKing) {
+            if (piece.player === 1 && toR === 7) {
+                board[toR][toC].isKing = true;
+            } else if (piece.player === 2 && toR === 0) {
+                board[toR][toC].isKing = true;
+            }
+        }
+
+        currentPlayer = currentPlayer === 1 ? 2 : 1;
+        selectedPiece = null;
+        renderBoard();
+        
+        // Vérifier la victoire et lancer l'IA
+        if (!checkWinCondition()) {
+            if (currentPlayer === 2 && gameMode === 'ia') {
+                setTimeout(AITurn, 500); 
+            }
+        }
+    }
+}
+        
+function updateStatus() {
+    const playerColor = currentPlayer === 1 ? "Noir (P1)" : "Blanc (P2)";
+    statusElement.textContent = gameActive ? `Au tour du Joueur ${playerColor}` : 'Partie terminée.';
+}
+        
+function checkWinCondition() {
+    const p1Pieces = board.flat().filter(p => p && p.player === 1).length;
+    const p2Pieces = board.flat().filter(p => p && p.player === 2).length;
+
+    let winner = null;
+
+    if (p1Pieces === 0) {
+        winner = 2; // IA/Adversaire gagne
+    } else if (p2Pieces === 0) {
+        winner = 1; // Joueur gagne
+    }
+    
+    if (winner) {
+        gameActive = false;
+        statusElement.textContent = `FIN DU JEU : Le Joueur ${winner === 1 ? 'Noir (P1)' : 'Blanc (P2)'} a gagné !`;
+        
+        if (gameMode === 'ia' && selectedLevelIndex === currentLevelIndex) {
+            if (winner === 1) {
+                victories++;
+                // 🛑 SAUVEGARDE DE LA PROGRESSION ICI
+                saveProgress(); 
                 
-                // Logique de progression (mode IA uniquement)
-                if (gameMode === 'ia' && selectedLevelIndex === currentLevelIndex) {
-                    if (winner === 1) {
-                        victories++;
-                        
-                        if (victories >= 5) {
-                            currentLevelIndex++;
-                            victories = 0; 
-                            if (currentLevelIndex >= LEVELS.length) {
-                                currentLevelIndex = LEVELS.length - 1; 
-                                alert("FÉLICITATIONS ! Vous avez atteint le niveau Divinité !");
-                            } else {
-                                alert(`Passage au niveau supérieur : ${LEVELS[currentLevelIndex]} !`);
-                            }
-                        }
-                        updateProgressionDisplay(); // Rafraîchir le compteur dans l'écran de menu
+                if (victories >= 5) {
+                    currentLevelIndex++;
+                    victories = 0;
+                    // 🛑 SAUVEGARDE DU NOUVEAU NIVEAU ICI
+                    saveProgress();
+                    
+                    if (currentLevelIndex >= LEVELS.length) {
+                        currentLevelIndex = LEVELS.length - 1; 
+                        alert("FÉLICITATIONS ! Vous avez atteint le niveau Divinité !");
+                    } else {
+                        alert(`Passage au niveau supérieur : ${LEVELS[currentLevelIndex]} !`);
                     }
                 }
-                return true; // Le jeu est terminé
+                updateProgressionDisplay(); 
             }
-            return false; // Le jeu continue
         }
+        return true; 
+    }
+    return false;
+}
 
-        function resetGame() {
-            initializeBoard();
-            currentPlayer = 1;
-            selectedPiece = null;
-            gameActive = true;
-            renderBoard();
-        }
+function resetGame() {
+    initializeBoard();
+    currentPlayer = 1;
+    selectedPiece = null;
+    gameActive = true;
+    renderBoard();
+}
 
-        // --- Lancement et Événements ---
-        resetButton.addEventListener('click', resetGame);
-        backToMenuButton.addEventListener('click', backToMenu);
+// --- Lancement et Événements ---
+resetButton.addEventListener('click', resetGame);
+backToMenuButton.addEventListener('click', backToMenu);
 
-        // Initialisation de l'affichage
-        updateProgressionDisplay(); 
+// 🛑 CHARGEMENT DE LA PROGRESSION AU DÉMARRAGE
+loadProgress();
+updateProgressionDisplay();
     </script>
 </body>
+
 </html>
